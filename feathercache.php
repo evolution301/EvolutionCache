@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       EvolutionCache
  * Description:       轻量级整页缓存与前端性能优化（页面缓存 / CSS / JS / 图片 / 字体）。Fail-open 设计：任何优化出错自动回退原样输出，绝不影响页面显示。无许可证、无遥测、零第三方依赖。
- * Version:           1.3.0
+ * Version:           1.3.2
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Evolution301
@@ -15,7 +15,7 @@ namespace FeatherCache;
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'FEATHERCACHE_VERSION', '1.3.0' );
+define( 'FEATHERCACHE_VERSION', '1.3.2' );
 define( 'FEATHERCACHE_FILE', __FILE__ );
 define( 'FEATHERCACHE_DIR', __DIR__ . '/' );
 define( 'FEATHERCACHE_CACHE_DIR', WP_CONTENT_DIR . '/cache/feathercache/' );
@@ -43,7 +43,43 @@ require_once FEATHERCACHE_DIR . 'includes/HtmlPipeline.php';
  */
 final class Plugin {
 
+	/**
+	 * Replace-installs leave stale OPcache bytecodes for our absolute paths,
+	 * which can break wp-admin until PHP restarts. Clear it automatically:
+	 * - always on activation;
+	 * - once per version bump, triggered by the first request that boots
+	 *   the plugin (a tiny stat-check per request).
+	 */
+	public static function maybeClearOpcache(): void {
+		if ( ! function_exists( 'opcache_reset' ) ) {
+			return;
+		}
+		try {
+			CacheStore::initDirs();
+			$marker = FEATHERCACHE_CACHE_DIR . 'assets/.opc-' . FEATHERCACHE_VERSION;
+			if ( file_exists( $marker ) ) {
+				return;
+			}
+			@opcache_reset();
+			foreach ( glob( FEATHERCACHE_DIR . '*.php' ) as $file ) {
+				@opcache_invalidate( $file, true );
+			}
+			foreach ( glob( FEATHERCACHE_DIR . 'includes/*.php' ) as $file ) {
+				@opcache_invalidate( $file, true );
+			}
+			foreach ( glob( FEATHERCACHE_DIR . 'includes/Opt/*.php' ) as $file ) {
+				@opcache_invalidate( $file, true );
+			}
+			@file_put_contents( $marker, (string) time() );
+		} catch ( \Throwable $e ) { // phpcs:ignore
+			// Fail-open: OPcache handling must never break the site.
+		}
+	}
+
 	public static function boot(): void {
+		// First thing on every request: clear stale OPcache once per version.
+		self::maybeClearOpcache();
+
 		register_activation_hook( FEATHERCACHE_FILE, array( __CLASS__, 'activate' ) );
 		register_deactivation_hook( FEATHERCACHE_FILE, array( __CLASS__, 'deactivate' ) );
 
@@ -69,6 +105,7 @@ final class Plugin {
 		if ( is_admin() ) {
 			Admin::boot();
 			add_action( 'admin_init', array( __CLASS__, 'upgrade' ) );
+			add_action( 'admin_init', array( __CLASS__, 'maybeClearOpcache' ) );
 		}
 
 		// REST API for AI agent takeover (Codex / ZCode / WorkBuddy / …).
@@ -85,8 +122,10 @@ final class Plugin {
 	public static function activate(): void {
 		$s = Options::all();
 		update_option( Options::OPT, $s, false );
+		Options::ensureApiKey();
 
 		CacheStore::initDirs();
+		self::maybeClearOpcache(); // Fresh bytecodes for this install/update.
 		Dropin::install();
 		Warmer::schedule();
 
@@ -127,6 +166,9 @@ final class Plugin {
 				$s['js_delay_exclude'] = implode( "\n", $lines );
 				update_option( Options::OPT, Options::sanitize( $s ), false );
 			}
+		}
+		if ( ! is_string( $stored ) || version_compare( $stored, '1.3.1', '<' ) ) {
+			Options::ensureApiKey(); // AI takeover secret for existing installs.
 		}
 		update_option( 'feathercache_version', FEATHERCACHE_VERSION, false );
 	}
