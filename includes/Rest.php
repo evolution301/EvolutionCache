@@ -47,7 +47,17 @@ final class Rest {
 	}
 
 	public static function canManage(): bool {
-		return current_user_can( 'manage_options' );
+		if ( current_user_can( 'manage_options' ) ) {
+			return true;
+		}
+		// Key-based agent auth: some hosts strip the Authorization header that
+		// Application Passwords need, so accept a dedicated secret header too.
+		$provided = isset( $_SERVER['HTTP_X_EVOLUTIONCACHE_KEY'] ) ? (string) $_SERVER['HTTP_X_EVOLUTIONCACHE_KEY'] : '';
+		if ( '' === $provided ) {
+			return false;
+		}
+		$stored = (string) Options::all()['api_key'];
+		return '' !== $stored && hash_equals( $stored, $provided );
 	}
 
 	/**

@@ -28,6 +28,7 @@ final class Admin {
 
 		add_action( 'admin_post_feathercache_flush', array( __CLASS__, 'handleFlush' ) );
 		add_action( 'admin_post_feathercache_warm', array( __CLASS__, 'handleWarm' ) );
+		add_action( 'admin_post_feathercache_regen_key', array( __CLASS__, 'handleRegenKey' ) );
 
 		// Toolbar shortcut so admins can purge from anywhere. Late priority:
 		// register after Imagify & co. so the node lands right beside them.
@@ -117,6 +118,23 @@ final class Admin {
 		exit;
 	}
 
+	/**
+	 * Rotate the machine-to-machine AI secret.
+	 */
+	public static function handleRegenKey(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Permission denied.', 'feathercache' ) );
+		}
+		check_admin_referer( 'feathercache_regen_key' );
+
+		$s              = Options::all();
+		$s['api_key']   = function_exists( 'wp_generate_password' ) ? wp_generate_password( 48, false, false ) : bin2hex( random_bytes( 24 ) );
+		update_option( Options::OPT, Options::sanitize( $s ), false );
+
+		wp_safe_redirect( add_query_arg( 'fc-msg', 'key', admin_url( 'admin.php?page=' . self::PAGE ) ) );
+		exit;
+	}
+
 	public static function notices(): void {
 		// Action feedback.
 		if ( isset( $_GET['page'] ) && self::PAGE === $_GET['page'] && isset( $_GET['fc-msg'] ) ) {
@@ -125,6 +143,8 @@ final class Admin {
 				echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( '缓存已清空。', 'feathercache' ) . '</p></div>';
 			} elseif ( 'warming' === $msg ) {
 				echo '<div class="notice notice-info is-dismissible"><p>' . esc_html__( '预热任务已启动，稍后可在状态区查看。', 'feathercache' ) . '</p></div>';
+			} elseif ( 'key' === $msg ) {
+				echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'API 密钥已重新生成，旧密钥立即失效。', 'feathercache' ) . '</p></div>';
 			}
 		}
 
@@ -205,6 +225,25 @@ final class Admin {
 					<tr><td><strong>超大图片自动压缩</strong><br><span class="description">宽 ≥800px 的本地图自动生成 800w/q80 WebP 副本并替换引用，节省数百 KB</span></td><td><?php echo empty( $s['img_resize'] ) ? $off : $on; ?></td></tr>
 					<tr><td><strong>Google Fonts 预连接</strong></td><td><?php echo empty( $s['fonts_preconnect'] ) ? $off : $on; ?></td></tr>
 					<tr><td><strong>缓存预热</strong><br><span class="description">每小时按站点 sitemap 自动预生成缓存</span></td><td><?php echo empty( $s['warmer_enabled'] ) ? $off : $on; ?></td></tr>
+				</tbody>
+			</table>
+
+			<h2>AI 接管（Codex / ZCode / WorkBuddy / Claude Code…）</h2>
+			<table class="widefat striped" style="max-width:900px">
+				<tbody>
+					<tr><td style="width:220px"><strong>API 密钥</strong></td><td>
+						<code style="user-select:all;word-break:break-all"><?php echo esc_html( Options::ensureApiKey() ); ?></code>
+						<a class="button button-small" style="margin-left:8px" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=feathercache_regen_key' ), 'feathercache_regen_key' ) ); ?>">重新生成</a>
+						<p class="description">把此密钥交给你的 AI 工具，配合下方端点即可远程管理插件。泄露后请立即重新生成。</p>
+					</td></tr>
+					<tr><td><strong>REST 端点</strong></td><td>
+						<code>GET <?php echo esc_html( rest_url( 'evolutioncache/v1/status' ) ); ?></code><br>
+						<code>POST <?php echo esc_html( rest_url( 'evolutioncache/v1/flush' ) ); ?></code><br>
+						<code>POST <?php echo esc_html( rest_url( 'evolutioncache/v1/warm' ) ); ?></code><br>
+						<code>GET <?php echo esc_html( rest_url( 'evolutioncache/v1/settings' ) ); ?></code>
+						<p class="description">请求头携带 <code>X-EvolutionCache-Key: 密钥</code>。示例：<br><code>curl -H "X-EvolutionCache-Key: 密钥" 端点地址</code></p>
+					</td></tr>
+					<tr><td><strong>WP-CLI</strong></td><td><code>wp evolutioncache status | flush | warm | config</code></td></tr>
 				</tbody>
 			</table>
 

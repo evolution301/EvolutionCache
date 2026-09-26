@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       EvolutionCache
  * Description:       轻量级整页缓存与前端性能优化（页面缓存 / CSS / JS / 图片 / 字体）。Fail-open 设计：任何优化出错自动回退原样输出，绝不影响页面显示。无许可证、无遥测、零第三方依赖。
- * Version:           1.3.2
+ * Version:           1.3.3
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Evolution301
@@ -15,7 +15,7 @@ namespace FeatherCache;
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'FEATHERCACHE_VERSION', '1.3.2' );
+define( 'FEATHERCACHE_VERSION', '1.3.3' );
 define( 'FEATHERCACHE_FILE', __FILE__ );
 define( 'FEATHERCACHE_DIR', __DIR__ . '/' );
 define( 'FEATHERCACHE_CACHE_DIR', WP_CONTENT_DIR . '/cache/feathercache/' );

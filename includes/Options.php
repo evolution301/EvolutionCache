@@ -49,6 +49,8 @@ final class Options {
 			'warmer_limit'      => 20,
 			// Invalidation.
 			'purge_on_save'     => 1,
+			// AI takeover secret (generated on activation / upgrade).
+			'api_key'           => '',
 		);
 	}
 
@@ -88,10 +90,37 @@ final class Options {
 		$out['js_delay_timeout'] = min( max( $out['js_delay_timeout'], 0 ), 30000 );
 		$out['warmer_limit']     = min( max( $out['warmer_limit'], 0 ), 500 );
 
+		// The AI secret is never posted by the settings form — preserve/generate.
+		$stored = get_option( self::OPT, array() );
+		if ( is_array( $stored ) && isset( $stored['api_key'] ) && '' !== (string) $stored['api_key'] ) {
+			$out['api_key'] = (string) $stored['api_key'];
+		} else {
+			$out['api_key'] = self::ensureApiKey();
+		}
+
 		// Validate custom regex lines in exclude_urls (#...# form). Invalid ones are dropped.
 		$out['exclude_urls'] = self::validateRegexLines( (string) $out['exclude_urls'] );
 
 		return $out;
+	}
+
+	/**
+	 * Machine-to-machine secret for the REST API. Generated once, visible to
+	 * admins in the panel, sent by agents as the X-EvolutionCache-Key header
+	 * (some hosts strip the Authorization header that app passwords need).
+	 */
+	public static function ensureApiKey(): string {
+		$stored = get_option( self::OPT, array() );
+		if ( is_array( $stored ) && isset( $stored['api_key'] ) && '' !== (string) $stored['api_key'] ) {
+			return (string) $stored['api_key'];
+		}
+		$key = function_exists( 'wp_generate_password' )
+			? wp_generate_password( 48, false, false )
+			: bin2hex( random_bytes( 24 ) );
+		$s              = self::all();
+		$s['api_key']   = $key;
+		update_option( self::OPT, $s, false );
+		return $key;
 	}
 
 	/**

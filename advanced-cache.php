@@ -208,14 +208,17 @@ $__fc_mtime = @filemtime( $__fc_file );
 if ( $__fc_mtime && isset( $_SERVER['HTTP_IF_MODIFIED_SINCE'] ) ) {
 	$__fc_ims = strtotime( (string) $_SERVER['HTTP_IF_MODIFIED_SINCE'] );
 	if ( false !== $__fc_ims && $__fc_ims >= $__fc_mtime ) {
-		header( 'Cache-Control: public, max-age=' . $__fc_ttl . ', s-maxage=' . $__fc_ttl );
+		header( 'Cache-Control: public, max-age=0, must-revalidate, s-maxage=' . $__fc_ttl );
 		http_response_code( 304 );
 		exit;
 	}
 }
 
 header( 'Content-Type: ' . ( isset( $__fc_meta['ct'] ) && is_string( $__fc_meta['ct'] ) ? $__fc_meta['ct'] : 'text/html; charset=UTF-8' ) );
-header( 'Cache-Control: public, max-age=' . $__fc_ttl . ', s-maxage=' . $__fc_ttl );
+// max-age=0 + must-revalidate: browsers revalidate every visit (fast 304 via
+// Last-Modified), so content edits + 清缓存 take effect immediately. CDNs may
+// still cache at the edge for ttl (s-maxage).
+header( 'Cache-Control: public, max-age=0, must-revalidate, s-maxage=' . $__fc_ttl );
 header( 'Vary: Accept-Encoding' );
 if ( ! empty( $__fc_cfg['mobile'] ) ) {
 	header( 'Vary: User-Agent' );
