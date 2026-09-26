@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: [ '7.4', '8.2', '8.4' ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check (php -l)
+        run: find . -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Run portable test harness
+        run: php tests/run-tests.php
+
+      - name: Package check (zip entries must use forward slashes)
+        run: |
+          zip -r -q /tmp/evolutioncache.zip .
+          python3 - <<'PY'
+          import zipfile, sys
+          bad = [n for n in zipfile.ZipFile('/tmp/evolutioncache.zip').namelist() if '\\' in n]
+          if bad:
+              print('Backslash entries (breaks WP installs):', bad)
+              sys.exit(1)
+          print('zip entries OK')
+          PY
